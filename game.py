@@ -1,4 +1,5 @@
 from items import *
+import learning
 
 STARTING_AMOUNT = 100
 SB = 1
@@ -6,12 +7,16 @@ BB = 2
 
 
 class Player:
+    number_of_players = 0
+
     def __init__(self):
         self.chips = STARTING_AMOUNT
         self.game = None
         self.hand = None
         self.pushed = 0
         self.folded = False
+        self.id = Player.number_of_players
+        Player.number_of_players += 1
 
     def new_hand(self, game):
         self.game = game
@@ -33,7 +38,12 @@ class Player:
     def act(self, call_up_to):
         # Things we're allowed to know:
         # everything in the Game, and the opponent's chip stack
-        decision = call_up_to  # TODO: Determine amount
+        opponent_stack = 0  # Gets overwritten
+        for p in self.game.players:
+            if p.id != self.id:
+                opponent_stack = p.chips
+        decision = BB * learning.decide(call_up_to/BB, self.pushed/BB, opponent_stack/BB, self.chips/BB,
+                                        self.game.pot/BB, self.hand.sort(), self.game.board)
 
         if decision < call_up_to:  # Fold
             self.folded = True
@@ -83,19 +93,19 @@ class Game:
         self.collect_chips()
 
 
-if __name__ == '__main__':
+def start():
     player_1 = Player()
     player_2 = Player()
 
-    for i in range(10):
-        this_game = Game(i)
+    for j in range(100):
+        this_game = Game(j)
         player_1.new_hand(this_game)
         player_2.new_hand(this_game)
         this_game.winner = None
 
         # Blinds
-        sb_index = i % len(this_game.players)
-        bb_index = (i + 1) % len(this_game.players)
+        sb_index = j % len(this_game.players)
+        bb_index = (j + 1) % len(this_game.players)
         this_game.players[sb_index].bet(SB)
         this_game.players[bb_index].bet(BB)
 
@@ -129,8 +139,8 @@ if __name__ == '__main__':
         if this_game.winner is not None:
             this_game.winner.chips += this_game.pot
         else:
-            player_1.chips += this_game.pot/2
-            player_2.chips += this_game.pot/2
+            player_1.chips += this_game.pot / 2
+            player_2.chips += this_game.pot / 2
 
         # TODO: is the rest necessary?
         this_game.pot = 0
@@ -138,3 +148,7 @@ if __name__ == '__main__':
         print player_2.get_hand().get_strings()
         print player_1.chips
         print player_2.chips
+
+
+if __name__ == '__main__':
+    start()
