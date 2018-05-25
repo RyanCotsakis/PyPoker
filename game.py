@@ -1,5 +1,4 @@
 from items import *
-import learning
 
 STARTING_AMOUNT = 100
 SB = 1
@@ -42,15 +41,37 @@ class Player:
         for p in self.game.players:
             if p.id != self.id:
                 opponent_stack = p.chips
-        decision = BB * learning.decide(call_up_to/BB, self.pushed/BB, opponent_stack/BB, self.chips/BB,
-                                        self.game.pot/BB, self.hand.sort(), self.game.board)
-
+        decision = BB * self.decide(call_up_to/BB, opponent_stack/BB)
         if decision < call_up_to:  # Fold
             self.folded = True
         elif decision >= 2 * call_up_to - self.pushed and decision >= BB + call_up_to:  # Raise
             self.bet(decision-self.pushed)
         else:  # Call
             self.bet(call_up_to - self.pushed)
+
+    def decide(self, call_up_to, opponent_stack):
+        _hand = self.hand.sort()
+        high_card = _hand.cards[0].value
+        low_card = _hand.cards[1].value
+        pushed = self.pushed/BB
+        chips = self.chips/BB
+        pot = self.game.pot/BB
+        if self.game.board is not None:
+            combined_hand = _hand.plus(self.game.board)
+            _board_size = self.game.board.size()
+            amount_of_one_suit_board = max([len(self.game.board.get_values(suit)) for suit in Card.suits])
+            board_values = [c.value for c in self.game.board.cards]
+        else:
+            combined_hand = _hand
+            _board_size = 0
+            board_values = []
+        amount_of_one_suit = max([len(combined_hand.get_values(suit)) for suit in Card.suits])
+
+        # TODO:
+        # Feed the variables without _preceding into the net (one net per stage of the game)
+        # Bet what you think you're going to win, so the next training data is the result from this game played with
+        # the result from the last net
+        return 1
 
 
 class Game:
@@ -101,7 +122,6 @@ def start():
         this_game = Game(j)
         player_1.new_hand(this_game)
         player_2.new_hand(this_game)
-        this_game.winner = None
 
         # Blinds
         sb_index = j % len(this_game.players)
