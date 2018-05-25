@@ -10,18 +10,28 @@ class Card:
         if card_num is None:
             card_num = rn.randrange(52)
         self.card_num = card_num
-        self.value, self.suit = divmod(card_num, 4)
+        self.value, self._suit = divmod(card_num, 4)
 
-    # Return string value
     def get_value(self):
+        """
+        Get the value of the card as a string.
+        :return: string representation of the value
+        """
         return Card.values[self.value]
 
-    # Return string suit
     def get_suit(self):
-        return Card.suits[self.suit]
+        """
+        Get the suit of the card as a string.
+        :return: string representation of the suit
+        """
+        return Card.suits[self._suit]
 
-    # 1: self is higher. -1: that is higher. 0: tie
     def relative_to(self, that):
+        """
+        Compare the value of two cards, self and that. Aces are high
+        :param that: Card object
+        :return: 1 if self is higher, -1 if that is higher, 0 if cards have same value
+        """
         if self.value > that.value:
             return 1
         elif self.value < that.value:
@@ -31,43 +41,68 @@ class Card:
 
 class Deck:
     def __init__(self):
-        self.cards = range(52)
-        rn.shuffle(self.cards)
-        self.top_card = 0  # Represents the index of the next card
+        self._cards = range(52)
+        rn.shuffle(self._cards)
+        self._top_card = 0  # Represents the index of the next card
 
-    # Returns the next card as a Card or as a list of Cards if num_of_cards is not None
-    # Ensure first that there are enough cards by calling cards_remaining
     def draw(self, num_of_cards=None):
-        start = self.top_card
-        end = self.top_card + num_of_cards
+        """
+        Returns the next card as a Card or as a list of Cards if num_of_cards is not None
+        Ensure first that there are enough cards by calling cards_remaining
+        :param num_of_cards: number of cards to remove from the deck
+        :return: card objects
+        """
+        start = self._top_card
+        end = self._top_card + num_of_cards
         if num_of_cards is not None:
-            self.top_card += num_of_cards
-            return [Card(card) for card in self.cards[start:end]]
+            self._top_card += num_of_cards
+            return [Card(card) for card in self._cards[start:end]]
         else:
-            self.top_card += 1
-            return Card(self.cards[start])
+            self._top_card += 1
+            return Card(self._cards[start])
 
     def cards_remaining(self):
-        return 52-self.top_card
+        """
+        Counts the number of cards remaining
+        :return: number of cards that have not been drawn
+        """
+        return 52-self._top_card
 
 
 class Hand:
     def __init__(self, cards):
         self.cards = cards  # list of Card objects
 
-    # Subtracting the deck would result in an empty hand
     def minus(self, that):
+        """
+        Set subtraction of hands
+        :param that: Hand
+        :return: Hand
+        """
         return Hand([card for card in self.cards if card not in that.cards])
 
-    # Should be cards from the same deck
     def plus(self, that):
+        """
+        Union two hands. Should be cards from the same deck
+        :param that: Hand
+        :return: Hand
+        """
         return Hand(self.cards + that.cards)
 
     def size(self):
+        """
+        Get the number of Cards in the hand
+        :return: int
+        """
         return len(self.cards)
 
-    # sorts hand in descending order. If select not None, returns select highest carded hand
     def sort(self, select=None):
+        """
+        Sorts the Hand in descending order. If select not None:
+        :param select: int. The returned Hand will be of size select,
+        and will be the highest cards in the original Hand
+        :return: Hand
+        """
         card_nums = [card.card_num for card in self.cards]
         card_nums.sort(reverse=True)
         cards = [Card(c_num) for c_num in card_nums]
@@ -75,19 +110,30 @@ class Hand:
             return Hand(cards[:select])
         return Hand(cards)
 
-    # Returns list of strings like ['9', '9', '4', 'Q', '3', '2', '8']
-    # If clubs specified, returns ['4', '3', '2', '8'] (see next method)
     def get_values(self, suit=None):
+        """
+        Returns list of strings like ['9', '9', '4', 'Q', '3', '2', '8']
+        If clubs specified, returns ['4', '3', '2', '8'] (see next method)
+        :param suit: String. Will ignore all cards that do not have this suit.
+        :return: List of strings
+        """
         if suit is None:
             return [card.get_value() for card in self.cards]
         return [card.get_value() for card in self.cards if card.get_suit() == suit]
 
-    # Returns list of strings like ['9S', '9D', '4C', 'QD', '3C', '2C', '8C']
     def get_strings(self):
+        """
+        Represent the Hand as a list of strings
+        :return: List of strings like ['9S', '9D', '4C', 'QD', '3C', '2C', '8C']
+        """
         return [card.get_value()+card.get_suit() for card in self.cards]
 
-    # The following is_x methods return False, or groups of cards corresponding to what it found
     def is_straight(self, suit=None):
+        """
+        Determine if hand contains a straight
+        :param suit: String. Ignore cards that are not of this suit
+        :return: Bool
+        """
         consecutive = 0
         for value in ['A'] + Card.values:
             if value in self.get_values(suit):
@@ -103,6 +149,10 @@ class Hand:
 
     # Returns single card hand
     def is_straight_flush(self):
+        """
+        Determine if hand contains a straight flush
+        :return: Bool
+        """
         for suit in Card.suits:
             if self.is_straight(suit):
                 return self.is_straight(suit)
@@ -110,14 +160,23 @@ class Hand:
 
     # Returns 5 card hand
     def is_flush(self):
+        """
+        Determine if hand contains a straight flush. If not, returns False.
+        If so, returns the 5 cards with the same suit
+        :return: False || Hand
+        """
         for suit in Card.suits:
             if len(self.get_values(suit)) >= 5:
                 mini_hand = Hand([card for card in self.cards if card.get_value() in self.get_values(suit)])
                 return mini_hand.sort(5)
         return False
 
-    # Returns blank card hand (all same value) and a 5-blank sorted hand
     def is_oak(self, blank):
+        """
+        Returns a _ card hand (all same value) that was in the original Hand. False if not possible.
+        :param blank: int. how many of a kind are we talkin'?
+        :return: False || (Hand, Hand). The first hand is the cards that have the same value. The other is the kickers.
+        """
         for value in Card.bw_values:
             mini_hand = Hand([card for card in self.cards if card.get_value() == value])
             if mini_hand.size() == blank:
@@ -125,8 +184,11 @@ class Hand:
                 return mini_hand, kickers
         return False
 
-    # Returns 3 card hand and a 2 card hand
     def is_full_house(self):
+        """
+        Returns the three carded hand and the two carded hand if there's a full house. False if not.
+        :return: False || (Hand, Hand)
+        """
         two_hand = False
         three_hand = False
         for value in Card.bw_values:
@@ -141,6 +203,10 @@ class Hand:
 
     # Returns two 2 card hands and a 1 carded hand
     def is_two_pair(self):
+        """
+        Returns the two two carded hands, and the highest kicker.
+        :return: False || (Hand, Hand, Hand)
+        """
         first_pair_hand = False
         for value in Card.bw_values:
             mini_hand = Hand([card for card in self.cards if card.get_value() == value])
@@ -151,16 +217,24 @@ class Hand:
                 first_pair_hand = mini_hand
         return False
 
-    # Self and that should be sorted hands. Compares based on highest value
     def compare_kickers(self, that):
+        """
+        Determines which hand has a higher kicker
+        :param that: Hand
+        :return: 1 if self is higher, -1 if that is higher, 0 if Hands are equal in terms of values.
+        """
         for j in range(self.size()-1):
-            a = self.cards[j].relative_to(that.cards[j])
+            a = self.sort().cards[j].relative_to(that.sort().cards[j])
             if a:
                 return a
-        return self.cards[-1].relative_to(that.cards[-1])
+        return self.sort().cards[-1].relative_to(that.sort().cards[-1])
 
-    # Returns 1 if better than that, -1 if worse, 0 if same
     def showdown(self, that):
+        """
+        Compare the value of two Hands.
+        :param that: Hand
+        :return: 1 if self is higher, -1 if that is higher, 0 if Hands are of the same strength
+        """
         # Check straight flush
         for suit in Card.suits:
             mine = self.is_straight(suit)
