@@ -1,6 +1,5 @@
 from items import *
-import numpy as np
-import random as rn
+from learning import *
 
 STARTING_AMOUNT = 100
 SB = 1
@@ -10,13 +9,14 @@ BB = 2
 class Player:
     number_of_players = 0
 
-    def __init__(self):
+    def __init__(self, recorder=None):
         self._chips = STARTING_AMOUNT
         self.game = None
         self.hand = None
         self._pushed = 0
         self.folded = False
         self.id = Player.number_of_players
+        self.recorder = recorder
         Player.number_of_players += 1
 
     def chips(self):
@@ -35,6 +35,9 @@ class Player:
         self._pushed = 0
         self.folded = False
         game.players.append(self)
+
+    def reset_chips(self):
+        self._chips = STARTING_AMOUNT
 
     def get_hand(self):
         """
@@ -117,13 +120,11 @@ class Player:
             amount_of_one_suit_board = 0
             board_values = []
         amount_of_one_suit = max([len(combined_hand.get_values(suit)) for suit in Card.suits])
-        flush = int(bool(combined_hand.is_flush()))
-        straight_flush = int(bool(combined_hand.is_straight_flush()))
 
         x = np.array([0,  # decision parameter
                       # Measured in BBs
-                      call_up_to,
                       pushed,
+                      call_up_to,
                       stack,
                       opponent_stack,
                       pot,
@@ -144,12 +145,28 @@ class Player:
                       high_card,
                       low_card,
                       ] + board_values)
-        # TODO:
-        # 1. Feed x into a net with the different decision parameters
-        # 2. Figure out which decision parameter yielded best output
-        # 3. return the decision parameter {-1, 0, 1, 2, 3}
+        x.reshape((1, x.size))
 
-        return rn.randint(-1, 3)
+        if len(board_values) == 0:  # PREFLOP
+            x[0] = decision_parameter(x, preflop_model)
+            if self.recorder is not None and self.recorder.name == PREFLOP_NAME:
+                self.recorder.x.append(x)
+            return x[0]
+        elif len(board_values) == 3:  # FLOP
+            x[0] = decision_parameter(x, flop_model)
+            if self.recorder is not None and self.recorder.name == FLOP_NAME:
+                self.recorder.x.append(x)
+            return x[0]
+        elif len(board_values) == 4:  # TURN
+            x[0] = decision_parameter(x, turn_model)
+            if self.recorder is not None and self.recorder.name == TURN_NAME:
+                self.recorder.x.append(x)
+            return x[0]
+        else:  # RIVER
+            x[0] = decision_parameter(x, river_model)
+            if self.recorder is not None and self.recorder.name == RIVER_NAME:
+                self.recorder.x.append(x)
+            return x[0]
 
 
 class Game:
@@ -166,7 +183,6 @@ class Game:
 
     def collect_chips(self):
         """
-        TODO: only makes sense for 2 players
         The minimum amount that was pushed is what goes into the pot from both players. The rest goes back to the
         player that pushed
         :return: None
@@ -190,12 +206,11 @@ class Game:
             active_player_index = (self.under_the_gun + j) % len(self.players)
             max_bet = max([p.pushed() for p in self.players])
             active_player = self.players[active_player_index]
-            if active_player.chips == 0:
+            if active_player.chips() == 0:
                 break
             else:
                 active_player.act(max_bet)
 
-            # TODO: This only works for 2 players
             if self.players[0].folded:
                 self.winner = self.players[1]
                 break
@@ -206,13 +221,16 @@ class Game:
         self.collect_chips()
 
 
-def start():
-    player_1 = Player()
+def start_games(n, data_name, save_data=False):
+    r = Recorder(data_name)
+    player_1 = Player(r)
     player_2 = Player()
 
-    for j in range(100):
+    for j in range(n):
         if player_1.chips() == 0 or player_2.chips() == 0:
-            break
+            player_1.reset_chips()
+            player_2.reset_chips()
+        r.y_before = player_1.chips()
         this_game = Game(j)
         player_1.new_hand(this_game)
         player_2.new_hand(this_game)
@@ -256,12 +274,19 @@ def start():
             player_1.collect(this_game.pot() / 2)
             player_2.collect(this_game.pot() / 2)
 
-        # TODO: is the rest necessary?
+        r.y_after = player_1.chips()
+        r.add_to_list()
+
         print player_1.get_hand().get_strings()
         print player_2.get_hand().get_strings()
         print player_1.chips()
         print player_2.chips()
 
+    # Done playing all the games
+    if save_data:
+        r.save()
+
 
 if __name__ == '__main__':
-    start()
+    start_games(10000, PREFLOP_NAME, save_data=False)
+    # create_model(PREFLOP_NAME, epochs=400)

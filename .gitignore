@@ -3,3 +3,7 @@
 
 # Misc #
 *.pyc
+
+# Big Data #
+models/
+data/
