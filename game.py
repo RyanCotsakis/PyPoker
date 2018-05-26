@@ -9,8 +9,9 @@ BB = 2
 class Player:
     number_of_players = 0
 
-    def __init__(self, recorder=None):
+    def __init__(self, recorder=None, human=False):
         self._chips = STARTING_AMOUNT
+        self.human = human
         self.game = None
         self.hand = None
         self._pushed = 0
@@ -74,13 +75,32 @@ class Player:
         # Things we're allowed to know:
         # everything in the Game, and the opponent's chip stack
         opponent_stack = 0  # Gets overwritten
+        opponent_pushed = 0
         for p in self.game.players:
             if p.id != self.id:
                 opponent_stack = p.chips()
+                opponent_pushed = p.pushed()
 
-        # This is the input to the net that produced the highest output.
-        bet_size = self.decide(call_up_to/BB, opponent_stack/BB) * max(call_up_to - self.pushed(), BB)
-
+        if not self.human:
+            # This is the input to the net that produced the highest output.
+            bet_size = self.decide(call_up_to/BB, opponent_stack/BB) * max(call_up_to - self.pushed(), BB)
+        else:
+            print('\nYour stack: ${}'.format(self.chips()))
+            print('Opponent Stack: ${}'.format(opponent_stack))
+            print('Pot: ${}'.format(self.game.pot() + self.pushed() + opponent_pushed))
+            if self.game.board is not None:
+                print('Board: {}'.format(self.game.board.get_strings()))
+            else:
+                print('Pre-Flop')
+            print('Your Hand: {}'.format(self.hand.get_strings()))
+            print('${} to call...'.format(call_up_to - self.pushed()))
+            bet_size = 0
+            try:
+                bet_size = int(raw_input("\nEnter a negative number to fold,\n"
+                                         "or a positive number to indicate\n"
+                                         "how much you'd like to raise by:\n"))
+            except ValueError:
+                pass
         if bet_size < 0:  # Fold
             self.folded = True
         elif bet_size > 0:  # Raise
@@ -221,10 +241,10 @@ class Game:
         self.collect_chips()
 
 
-def start_games(n, data_name, save_data=False):
+def start_games(n, data_name='test', save_data=False, human=False):
     r = Recorder(data_name)
-    player_1 = Player(r)
-    player_2 = Player()
+    player_1 = Player(recorder=r)
+    player_2 = Player(human=human)
 
     for j in range(n):
         if player_1.chips() == 0 or player_2.chips() == 0:
@@ -277,10 +297,7 @@ def start_games(n, data_name, save_data=False):
         r.y_after = player_1.chips()
         r.add_to_list()
 
-        print player_1.get_hand().get_strings()
-        print player_2.get_hand().get_strings()
-        print player_1.chips()
-        print player_2.chips()
+        print 'Game #{}'.format(j+1)
 
     # Done playing all the games
     if save_data:
@@ -288,5 +305,4 @@ def start_games(n, data_name, save_data=False):
 
 
 if __name__ == '__main__':
-    start_games(10000, PREFLOP_NAME, save_data=False)
-    # create_model(PREFLOP_NAME, epochs=400)
+    start_games(3, human=True)
