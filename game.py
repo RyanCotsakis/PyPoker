@@ -201,33 +201,41 @@ class Player:
                           low_card
                           ])
         x.reshape((1, x.size))
-
         if WATCH_AI:
             print '~\t{}'.format(x)
             print "~\tHand: {}".format(self.hand.get_strings())
 
+        use_random = rn.random() < 0.3
         if len(board_values) == 0:  # PREFLOP
             x[0] = decision_parameter(x, preflop_model)
             if self.recorders is not None:
                 recorder = self.recorders[0]
+                if use_random:
+                    x[0] = rn.randint(-1, 3)
                 recorder.x.append(x)
                 recorder.y_before.append(self.chips())
         elif len(board_values) == 3:  # FLOP
             x[0] = decision_parameter(x, flop_model)
             if self.recorders is not None:
                 recorder = self.recorders[1]
+                if use_random:
+                    x[0] = rn.randint(-1, 3)
                 recorder.x.append(x)
                 recorder.y_before.append(self.chips())
         elif len(board_values) == 4:  # TURN
             x[0] = decision_parameter(x, turn_model)
             if self.recorders is not None:
                 recorder = self.recorders[2]
+                if use_random:
+                    x[0] = rn.randint(-1, 3)
                 recorder.x.append(x)
                 recorder.y_before.append(self.chips())
         else:  # RIVER
             x[0] = decision_parameter(x, river_model)
             if self.recorders is not None:
                 recorder = self.recorders[3]
+                if use_random:
+                    x[0] = rn.randint(-1, 3)
                 recorder.x.append(x)
                 recorder.y_before.append(self.chips())
         if call_up_to == 0 and x[0] == -1:
@@ -297,7 +305,10 @@ def start_games(n, save_data=False, human=False):
     r_flop = Recorder(FLOP_NAME)
     r_turn = Recorder(TURN_NAME)
     r_river = Recorder(RIVER_NAME)
-    player_1 = Player(recorders=[r_preflop, r_flop, r_turn, r_river])
+    if not human:
+        player_1 = Player(recorders=[r_preflop, r_flop, r_turn, r_river])
+    else:
+        player_1 = Player()
     player_2 = Player(human=human)
 
     for j in range(n):
@@ -358,12 +369,13 @@ def start_games(n, save_data=False, human=False):
             print "Your chips: ${}".format(player_2.chips())
             print "Computer's chips: ${}\n".format(player_1.chips())
 
-        for r in player_1.recorders:
-            r.y_after = player_1.chips()
-            r.add_to_list()
+        if player_1.recorders is not None:
+            for r in player_1.recorders:
+                r.y_after = player_1.chips()
+                r.add_to_list()
 
     # Done playing all the games
-    if save_data:
+    if save_data and player_1. recorders is not None:
         for r in player_1.recorders:
             r.save()
 
@@ -372,11 +384,10 @@ if __name__ == '__main__':
     # start_games(10, human=True)
 
     # --- TRAIN ---
-    # DO THIS TO START
-    # UNCOMMENT learning.py
-    start_games(10000, save_data=True)
-    # PAUSE HERE AND COMMENT "data_folder = './data/'" IN learning.py
-    create_model(PREFLOP_NAME, epochs=500, model=preflop_model)
-    create_model(FLOP_NAME, epochs=500, model=flop_model)
-    create_model(TURN_NAME, epochs=500, model=turn_model)
-    create_model(RIVER_NAME, epochs=500, model=river_model)
+    for i in range(5):
+        preflop_model, flop_model, turn_model, river_model = load_all_models()
+        create_model(RIVER_NAME, epochs=500, model=river_model)
+        create_model(TURN_NAME, epochs=500, model=turn_model)
+        create_model(FLOP_NAME, epochs=500, model=flop_model)
+        create_model(PREFLOP_NAME, epochs=500, model=preflop_model)
+        start_games(8000, save_data=True)

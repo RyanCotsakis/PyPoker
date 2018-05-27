@@ -13,32 +13,44 @@ RIVER_NAME = 'river'
 model_folder = './models/simultaneous_'
 data_folder = './data/simultaneous_'
 
-try:
-    preflop_model = load_model(model_folder + PREFLOP_NAME + '.h5')
-except IOError:
-    preflop_model = None
-try:
-    flop_model = load_model(model_folder + FLOP_NAME + '.h5')
-except IOError:
-    flop_model = None
-try:
-    turn_model = load_model(model_folder + TURN_NAME + '.h5')
-except IOError:
-    turn_model = None
-try:
-    river_model = load_model(model_folder + RIVER_NAME + '.h5')
-except IOError:
-    river_model = None
+
+def load_all_models():
+    try:
+        preflop_model = load_model(model_folder + PREFLOP_NAME + '.h5')
+    except IOError:
+        preflop_model = None
+    try:
+        flop_model = load_model(model_folder + FLOP_NAME + '.h5')
+    except IOError:
+        flop_model = None
+    try:
+        turn_model = load_model(model_folder + TURN_NAME + '.h5')
+    except IOError:
+        turn_model = None
+    try:
+        river_model = load_model(model_folder + RIVER_NAME + '.h5')
+    except IOError:
+        river_model = None
+    return preflop_model, flop_model, turn_model, river_model
+
+
+# Make these global variables
+preflop_model, flop_model, turn_model, river_model = load_all_models()
 
 
 def load_data(name):
-    # data_folder = './data/'  # Comment this out after running 'start_games' once
-    in_x = open(data_folder + 'x_' + name + '.pkl', 'rb')
-    in_y = open(data_folder + 'y_' + name + '.pkl', 'rb')
+    try:
+        in_x = open(data_folder + 'x_' + name + '.pkl', 'rb')
+        in_y = open(data_folder + 'y_' + name + '.pkl', 'rb')
+    except IOError:
+        print 'Using Alternate Data'
+        in_x = open('./data/x_' + name + '.pkl', 'rb')
+        in_y = open('./data/y_' + name + '.pkl', 'rb')
     return pickle.load(in_x), pickle.load(in_y)
 
 
 def create_model(name, epochs=200, model=None):
+    print "Training: " + name
     x, y = load_data(name)
     n, m = x.shape
     assert n == y.size
@@ -93,8 +105,8 @@ class Recorder:
         self.y_after = None
 
     def save(self):
-        out_x = open(data_folder + self.name + '.pkl', 'wb')
-        out_y = open(data_folder + self.name + '.pkl', 'wb')
+        out_x = open(data_folder + 'x_' + self.name + '.pkl', 'wb')
+        out_y = open(data_folder + 'y_' + self.name + '.pkl', 'wb')
         pickle.dump(np.array(self._x), out_x)
         pickle.dump(np.array(self._y_after) - np.array(self._y_before), out_y)
 
