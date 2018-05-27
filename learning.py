@@ -10,8 +10,8 @@ FLOP_NAME = 'flop'
 TURN_NAME = 'turn'
 RIVER_NAME = 'river'
 
-model_folder = './models/'
-data_folder = './data/'
+model_folder = './models/simultaneous_'
+data_folder = './data/simultaneous_'
 
 try:
     preflop_model = load_model(model_folder + PREFLOP_NAME + '.h5')
@@ -32,6 +32,7 @@ except IOError:
 
 
 def load_data(name):
+    # data_folder = './data/'  # Comment this out after running 'start_games' once
     in_x = open(data_folder + 'x_' + name + '.pkl', 'rb')
     in_y = open(data_folder + 'y_' + name + '.pkl', 'rb')
     return pickle.load(in_x), pickle.load(in_y)
@@ -42,6 +43,7 @@ def create_model(name, epochs=200, model=None):
     n, m = x.shape
     assert n == y.size
     if model is None:
+        print 'Could not find ' + model_folder + name + '.h5'
         model = Sequential([
             Dense(64, input_dim=m, activation='relu'),
             Dropout(0.2),
@@ -91,8 +93,8 @@ class Recorder:
         self.y_after = None
 
     def save(self):
-        out_x = open(data_folder + 'x_' + self.name + '.pkl', 'wb')
-        out_y = open(data_folder + 'y_' + self.name + '.pkl', 'wb')
+        out_x = open(data_folder + self.name + '.pkl', 'wb')
+        out_y = open(data_folder + self.name + '.pkl', 'wb')
         pickle.dump(np.array(self._x), out_x)
         pickle.dump(np.array(self._y_after) - np.array(self._y_before), out_y)
 
