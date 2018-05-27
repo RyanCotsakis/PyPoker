@@ -376,6 +376,7 @@ def train_model(name, epochs=500, new_games=False, number_of_games=5000):
     try:
         model = load_model(model_folder + name + '.h5')
     except IOError:
+        print 'Could not find ' + model_folder + name + '.h5'
         start_games(number_of_games, name, save_data=True, randomize=True)
         create_model(name, epochs=epochs)
         return
@@ -388,7 +389,23 @@ def train_model(name, epochs=500, new_games=False, number_of_games=5000):
 if __name__ == '__main__':
     # start_games(10, human=True)
 
+    # --- TRAIN ---
+    river_model = None
+    turn_model = None
+    flop_model = None
     train_model(PREFLOP_NAME, new_games=True)
+    try:
+        flop_model = load_model(model_folder + FLOP_NAME + '.h5')
+    except IOError:
+        flop_model = None
     train_model(FLOP_NAME, new_games=True)
+    try:
+        turn_model = load_model(model_folder + TURN_NAME + '.h5')
+    except IOError:
+        turn_model = None
     train_model(TURN_NAME, new_games=True)
+    try:
+        river_model = load_model(model_folder + RIVER_NAME + '.h5')
+    except IOError:
+        river_model = None
     train_model(RIVER_NAME, new_games=True)
