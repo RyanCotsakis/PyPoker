@@ -3,6 +3,8 @@ from keras.layers import Dense, Dropout
 import pickle
 import numpy as np
 
+WATCH_AI = False
+
 PREFLOP_NAME = 'preflop'
 FLOP_NAME = 'flop'
 TURN_NAME = 'turn'
@@ -35,38 +37,46 @@ def load_data(name):
     return pickle.load(in_x), pickle.load(in_y)
 
 
-def create_model(name, epochs=128):
+def create_model(name, epochs=200, model=None):
     x, y = load_data(name)
     n, m = x.shape
     assert n == y.size
-    model = Sequential([
-        Dense(64, input_dim=m, activation='relu'),
-        Dropout(0.2),
-        Dense(64, activation='relu'),
-        Dropout(0.2),
-        Dense(1, activation='sigmoid')
-    ])
-    model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
-    model.fit(x, y, validation_split=0.1, epochs=epochs, batch_size=64, verbose=1)
+    if model is None:
+        model = Sequential([
+            Dense(64, input_dim=m, activation='relu'),
+            Dropout(0.2),
+            Dense(64, activation='relu'),
+            Dropout(0.2),
+            Dense(16, activation='relu'),
+            Dropout(0.2),
+            Dense(1, activation='linear')
+        ])
+        model.compile(optimizer='adam', loss='mean_squared_error', metrics=['accuracy'])
+    model.fit(x, y, validation_split=0.15, epochs=epochs, batch_size=128, verbose=2)
     model.save(model_folder + name + '.h5')
+    return model
 
 
 def decision_parameter(x, model):
     if model is None:
         return 0
 
-    fold = -x[1]  # This is the amount that the player pushed.
+    fold = -x[1]-x[2]/2.0
     x[0] = 0
-    call = model.predict_on_batch(np.array([x]))
+    call = model.predict(np.array([x]))
     x[0] = 1
-    raise_1 = model.predict_on_batch(np.array([x]))
+    raise_1 = model.predict(np.array([x]))
     x[0] = 2
-    raise_2 = model.predict_on_batch(np.array([x]))
+    raise_2 = model.predict(np.array([x]))
     x[0] = 3
-    raise_3 = model.predict_on_batch(np.array([x]))
+    raise_3 = model.predict(np.array([x]))
 
     params = [-1, 0, 1, 2, 3]
     actions = [fold, call, raise_1, raise_2, raise_3]
+
+    if WATCH_AI:
+        print '~\t' + '\t'.join([str(a) for a in actions])
+
     return params[actions.index(max(actions))]
 
 
@@ -77,7 +87,7 @@ class Recorder:
         self._y_before = []
         self._y_after = []
         self.x = []
-        self.y_before = None
+        self.y_before = []
         self.y_after = None
 
     def save(self):
@@ -87,10 +97,10 @@ class Recorder:
         pickle.dump(np.array(self._y_after) - np.array(self._y_before), out_y)
 
     def add_to_list(self):
-        for x in self.x:
+        for x, y_before in zip(self.x, self.y_before):
             self._x.append(x)
-            self._y_before.append(self.y_before)
+            self._y_before.append(y_before)
             self._y_after.append(self.y_after)
         self.x = []
-        self.y_before = None
+        self.y_before = []
         self.y_after = None
