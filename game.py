@@ -208,6 +208,7 @@ class Player:
             print "~\tHand: {}".format(self.hand.get_strings())
 
         random_decision = rn.randint(-1, 3)
+        random_play = rn.randint(0, 2)  # Not including 3 because I don't want it to grow too quickly
         if len(board_values) == 0:  # PREFLOP
             x[0] = decision_parameter(x, preflop_model)
             if self.recorder is not None and self.recorder.name == PREFLOP_NAME:
@@ -215,6 +216,8 @@ class Player:
                     x[0] = random_decision
                 self.recorder.x.append(x)
                 self.recorder.y_before.append(self.chips())
+            elif self.recorder is not None and self.recorder.save_data:
+                x[0] = random_play
         elif len(board_values) == 3:  # FLOP
             x[0] = decision_parameter(x, flop_model)
             if self.recorder is not None and self.recorder.name == FLOP_NAME:
@@ -222,6 +225,9 @@ class Player:
                     x[0] = random_decision
                 self.recorder.x.append(x)
                 self.recorder.y_before.append(self.chips())
+            elif self.recorder is not None and self.recorder.save_data:
+                if self.recorder.name != PREFLOP_NAME:
+                    x[0] = random_play
         elif len(board_values) == 4:  # TURN
             x[0] = decision_parameter(x, turn_model)
             if self.recorder is not None and self.recorder.name == TURN_NAME:
@@ -229,6 +235,9 @@ class Player:
                     x[0] = random_decision
                 self.recorder.x.append(x)
                 self.recorder.y_before.append(self.chips())
+            elif self.recorder is not None and self.recorder.save_data:
+                if self.recorder.name == RIVER_NAME:
+                    x[0] = random_play
         else:  # RIVER
             x[0] = decision_parameter(x, river_model)
             if self.recorder is not None and self.recorder.name == RIVER_NAME:
@@ -301,7 +310,7 @@ def start_games(n, data_name='test', save_data=False, human=False, randomize=Fal
     :param save_data: Bool. Save and overwrite data/data_name.pkl with data from these games
     :param human: Bool. Play as a human against the computer
     """
-    r = Recorder(data_name)
+    r = Recorder(data_name, save_data=save_data)
     player_1 = Player(recorder=r, randomize=randomize)
     player_2 = Player(human=human)
 

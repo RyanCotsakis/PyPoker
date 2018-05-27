@@ -81,7 +81,8 @@ def decision_parameter(x, model):
 
 
 class Recorder:
-    def __init__(self, name):
+    def __init__(self, name, save_data=False):
+        self.save_data = save_data
         self.name = name
         self._x = []
         self._y_before = []
