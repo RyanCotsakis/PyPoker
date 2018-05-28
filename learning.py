@@ -3,51 +3,59 @@ from keras.layers import Dense, Dropout
 import pickle
 import numpy as np
 
-WATCH_AI = False
-
 PREFLOP_NAME = 'preflop'
 FLOP_NAME = 'flop'
 TURN_NAME = 'turn'
 RIVER_NAME = 'river'
 
-model_folder = './models/'
-data_folder = './data/'
+model_folder = './models/simultaneous_'
+data_folder = './data/simultaneous_'
 
-try:
-    preflop_model = load_model(model_folder + PREFLOP_NAME + '.h5')
-except IOError:
-    preflop_model = None
-try:
-    flop_model = load_model(model_folder + FLOP_NAME + '.h5')
-except IOError:
-    flop_model = None
-try:
-    turn_model = load_model(model_folder + TURN_NAME + '.h5')
-except IOError:
-    turn_model = None
-try:
-    river_model = load_model(model_folder + RIVER_NAME + '.h5')
-except IOError:
-    river_model = None
+
+def load_all_models():
+    try:
+        preflop_model = load_model(model_folder + PREFLOP_NAME + '.h5')
+    except IOError:
+        preflop_model = None
+    try:
+        flop_model = load_model(model_folder + FLOP_NAME + '.h5')
+    except IOError:
+        flop_model = None
+    try:
+        turn_model = load_model(model_folder + TURN_NAME + '.h5')
+    except IOError:
+        turn_model = None
+    try:
+        river_model = load_model(model_folder + RIVER_NAME + '.h5')
+    except IOError:
+        river_model = None
+    return preflop_model, flop_model, turn_model, river_model
 
 
 def load_data(name):
-    in_x = open(data_folder + 'x_' + name + '.pkl', 'rb')
-    in_y = open(data_folder + 'y_' + name + '.pkl', 'rb')
+    try:
+        in_x = open(data_folder + 'x_' + name + '.pkl', 'rb')
+        in_y = open(data_folder + 'y_' + name + '.pkl', 'rb')
+    except IOError:
+        print 'Using Alternate Data'
+        in_x = open('./data/x_' + name + '.pkl', 'rb')
+        in_y = open('./data/y_' + name + '.pkl', 'rb')
     return pickle.load(in_x), pickle.load(in_y)
 
 
 def create_model(name, epochs=200, model=None):
+    print "Training: " + name
     x, y = load_data(name)
     n, m = x.shape
     assert n == y.size
     if model is None:
+        print 'Could not find ' + model_folder + name + '.h5'
         model = Sequential([
-            Dense(64, input_dim=m, activation='relu'),
+            Dense(64, input_dim=m, activation='linear'),
             Dropout(0.2),
             Dense(64, activation='relu'),
             Dropout(0.2),
-            Dense(16, activation='relu'),
+            Dense(32, activation='relu'),
             Dropout(0.2),
             Dense(1, activation='linear')
         ])
@@ -57,7 +65,7 @@ def create_model(name, epochs=200, model=None):
     return model
 
 
-def decision_parameter(x, model):
+def decision_parameter(x, model, verbose=False):
     if model is None:
         return 0
 
@@ -74,15 +82,13 @@ def decision_parameter(x, model):
     params = [-1, 0, 1, 2, 3]
     actions = [fold, call, raise_1, raise_2, raise_3]
 
-    if WATCH_AI:
+    if verbose:
         print '~\t' + '\t'.join([str(a) for a in actions])
-
     return params[actions.index(max(actions))]
 
 
 class Recorder:
-    def __init__(self, name, save_data=False):
-        self.save_data = save_data
+    def __init__(self, name):
         self.name = name
         self._x = []
         self._y_before = []

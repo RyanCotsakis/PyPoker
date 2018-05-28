@@ -5,21 +5,21 @@ import random as rn
 STARTING_AMOUNT = 500
 SB = 1.0
 BB = 2.0
+WATCH_AI = False
 
 
 class Player:
     number_of_players = 0
 
-    def __init__(self, recorder=None, human=False, randomize=False):
+    def __init__(self, recorders=None, human=False):
         self._chips = STARTING_AMOUNT
-        self.randomize = randomize
         self.human = human
         self.game = None
         self.hand = None
         self._pushed = 0
         self.folded = False
         self.id = Player.number_of_players
-        self.recorder = recorder
+        self.recorders = recorders
         Player.number_of_players += 1
 
     def chips(self):
@@ -202,49 +202,43 @@ class Player:
                           low_card
                           ])
         x.reshape((1, x.size))
-
         if WATCH_AI:
             print '~\t{}'.format(x)
             print "~\tHand: {}".format(self.hand.get_strings())
 
-        random_decision = rn.randint(-1, 3)
-        random_play = rn.randint(0, 2)  # Not including 3 because I don't want it to grow too quickly
+        use_random = rn.random() < 0.3
         if len(board_values) == 0:  # PREFLOP
-            x[0] = decision_parameter(x, preflop_model)
-            if self.recorder is not None and self.recorder.name == PREFLOP_NAME:
-                if self.randomize:
-                    x[0] = random_decision
-                self.recorder.x.append(x)
-                self.recorder.y_before.append(self.chips())
-            elif self.recorder is not None and self.recorder.save_data:
-                x[0] = random_play
+            x[0] = decision_parameter(x, preflop_model, verbose=WATCH_AI)
+            if self.recorders is not None:
+                recorder = self.recorders[0]
+                if use_random:
+                    x[0] = rn.randint(-1, 3)
+                recorder.x.append(x)
+                recorder.y_before.append(self.chips())
         elif len(board_values) == 3:  # FLOP
-            x[0] = decision_parameter(x, flop_model)
-            if self.recorder is not None and self.recorder.name == FLOP_NAME:
-                if self.randomize:
-                    x[0] = random_decision
-                self.recorder.x.append(x)
-                self.recorder.y_before.append(self.chips())
-            elif self.recorder is not None and self.recorder.save_data:
-                if self.recorder.name != PREFLOP_NAME:
-                    x[0] = random_play
+            x[0] = decision_parameter(x, flop_model, verbose=WATCH_AI)
+            if self.recorders is not None:
+                recorder = self.recorders[1]
+                if use_random:
+                    x[0] = rn.randint(-1, 3)
+                recorder.x.append(x)
+                recorder.y_before.append(self.chips())
         elif len(board_values) == 4:  # TURN
-            x[0] = decision_parameter(x, turn_model)
-            if self.recorder is not None and self.recorder.name == TURN_NAME:
-                if self.randomize:
-                    x[0] = random_decision
-                self.recorder.x.append(x)
-                self.recorder.y_before.append(self.chips())
-            elif self.recorder is not None and self.recorder.save_data:
-                if self.recorder.name == RIVER_NAME:
-                    x[0] = random_play
+            x[0] = decision_parameter(x, turn_model, verbose=WATCH_AI)
+            if self.recorders is not None:
+                recorder = self.recorders[2]
+                if use_random:
+                    x[0] = rn.randint(-1, 3)
+                recorder.x.append(x)
+                recorder.y_before.append(self.chips())
         else:  # RIVER
-            x[0] = decision_parameter(x, river_model)
-            if self.recorder is not None and self.recorder.name == RIVER_NAME:
-                if self.randomize:
-                    x[0] = random_decision
-                self.recorder.x.append(x)
-                self.recorder.y_before.append(self.chips())
+            x[0] = decision_parameter(x, river_model, verbose=WATCH_AI)
+            if self.recorders is not None:
+                recorder = self.recorders[3]
+                if use_random:
+                    x[0] = rn.randint(-1, 3)
+                recorder.x.append(x)
+                recorder.y_before.append(self.chips())
         if call_up_to == 0 and x[0] == -1:
             return 0  # Don't fold when you can just call
         return x[0]
@@ -302,16 +296,20 @@ class Game:
         self.collect_chips()
 
 
-def start_games(n, data_name='test', save_data=False, human=False, randomize=False):
+def start_games(n, save_data=False, human=False):
     """
-    :param randomize: Bool. Fed to the computer player as an input
     :param n: Number of games to be played
-    :param data_name: String. if save_data: the x and y training data is saved under data/data_name.pkl
     :param save_data: Bool. Save and overwrite data/data_name.pkl with data from these games
     :param human: Bool. Play as a human against the computer
     """
-    r = Recorder(data_name, save_data=save_data)
-    player_1 = Player(recorder=r, randomize=randomize)
+    r_preflop = Recorder(PREFLOP_NAME)
+    r_flop = Recorder(FLOP_NAME)
+    r_turn = Recorder(TURN_NAME)
+    r_river = Recorder(RIVER_NAME)
+    if not human:
+        player_1 = Player(recorders=[r_preflop, r_flop, r_turn, r_river])
+    else:
+        player_1 = Player()
     player_2 = Player(human=human)
 
     for j in range(n):
@@ -372,49 +370,28 @@ def start_games(n, data_name='test', save_data=False, human=False, randomize=Fal
             print "Your chips: ${}".format(player_2.chips())
             print "Computer's chips: ${}\n".format(player_1.chips())
 
-        r.y_after = player_1.chips()
-        r.add_to_list()
+        if player_1.recorders is not None:
+            for r in player_1.recorders:
+                r.y_after = player_1.chips()
+                r.add_to_list()
 
     # Done playing all the games
-    if save_data:
-        r.save()
-
-
-def train_model(name, epochs=500, new_games=False, number_of_games=5000):
-    print 'Training: ' + name
-    try:
-        model = load_model(model_folder + name + '.h5')
-    except IOError:
-        print 'Could not find ' + model_folder + name + '.h5'
-        start_games(number_of_games, name, save_data=True, randomize=True)
-        create_model(name, epochs=epochs)
-        return
-
-    if new_games:
-        start_games(number_of_games, name, save_data=True, randomize=True)
-    create_model(name, epochs=epochs, model=model)
+    if save_data and player_1. recorders is not None:
+        for r in player_1.recorders:
+            r.save()
 
 
 if __name__ == '__main__':
-    # start_games(10, human=True)
 
     # --- TRAIN ---
-    river_model = None
-    turn_model = None
-    flop_model = None
-    train_model(PREFLOP_NAME, new_games=True)
-    try:
-        flop_model = load_model(model_folder + FLOP_NAME + '.h5')
-    except IOError:
-        flop_model = None
-    train_model(FLOP_NAME, new_games=True)
-    try:
-        turn_model = load_model(model_folder + TURN_NAME + '.h5')
-    except IOError:
-        turn_model = None
-    train_model(TURN_NAME, new_games=True)
-    try:
-        river_model = load_model(model_folder + RIVER_NAME + '.h5')
-    except IOError:
-        river_model = None
-    train_model(RIVER_NAME, new_games=True)
+    for i in range(5):
+        preflop_model, flop_model, turn_model, river_model = load_all_models()
+
+        create_model(RIVER_NAME, epochs=500, model=river_model)
+        create_model(TURN_NAME, epochs=500, model=turn_model)
+        create_model(FLOP_NAME, epochs=500, model=flop_model)
+        create_model(PREFLOP_NAME, epochs=500, model=preflop_model)
+        start_games(8000, save_data=True)
+
+    WATCH_AI = True
+    start_games(10, human=True)
