@@ -239,7 +239,7 @@ class Player:
                     x[0] = rn.randint(-1, 3)
                 recorder.x.append(x)
                 recorder.y_before.append(self.chips())
-        if call_up_to == 0 and x[0] == -1:
+        if call_up_to == pushed and x[0] == -1:
             return 0  # Don't fold when you can just call
         return x[0]
 
@@ -382,16 +382,16 @@ def start_games(n, save_data=False, human=False):
 
 
 if __name__ == '__main__':
+    preflop_model, flop_model, turn_model, river_model = load_all_models()
 
     # --- TRAIN ---
     for i in range(5):
-        preflop_model, flop_model, turn_model, river_model = load_all_models()
-
         create_model(RIVER_NAME, epochs=500, model=river_model)
         create_model(TURN_NAME, epochs=500, model=turn_model)
         create_model(FLOP_NAME, epochs=500, model=flop_model)
         create_model(PREFLOP_NAME, epochs=500, model=preflop_model)
         start_games(8000, save_data=True)
+        preflop_model, flop_model, turn_model, river_model = load_all_models()
 
     WATCH_AI = True
     start_games(10, human=True)
