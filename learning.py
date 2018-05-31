@@ -2,14 +2,15 @@ from keras.models import Sequential, load_model
 from keras.layers import Dense, Dropout
 import pickle
 import numpy as np
+import random as rn
 
 PREFLOP_NAME = 'preflop'
 FLOP_NAME = 'flop'
 TURN_NAME = 'turn'
 RIVER_NAME = 'river'
 
-model_folder = './models/simultaneous_'
-data_folder = './data/simultaneous_'
+model_folder = './models/ordered_'
+data_folder = './data/ordered_'
 
 
 def load_all_models():
@@ -32,20 +33,32 @@ def load_all_models():
     return preflop_model, flop_model, turn_model, river_model
 
 
-def load_data(name):
+def train_model(name, epochs=300):
+    print "Training: " + name
+    pf_model, f_model, t_model, r_model = load_all_models()
+    if name == PREFLOP_NAME:
+        model = pf_model
+    elif name == FLOP_NAME:
+        model = f_model
+    elif name == TURN_NAME:
+        model = t_model
+    elif name == RIVER_NAME:
+        model = r_model
+    else:
+        model = None
+
+    # Load data
     try:
         in_x = open(data_folder + 'x_' + name + '.pkl', 'rb')
         in_y = open(data_folder + 'y_' + name + '.pkl', 'rb')
-    except IOError:
-        print 'Using Alternate Data'
-        in_x = open('./data/x_' + name + '.pkl', 'rb')
-        in_y = open('./data/y_' + name + '.pkl', 'rb')
-    return pickle.load(in_x), pickle.load(in_y)
+    except IOError as e:
+        # print 'Using Alternate Data'
+        # in_x = open('./data/x_' + name + '.pkl', 'rb')
+        # in_y = open('./data/y_' + name + '.pkl', 'rb')
+        raise e
+    x, y = pickle.load(in_x), pickle.load(in_y)
 
-
-def create_model(name, epochs=200, model=None):
-    print "Training: " + name
-    x, y = load_data(name)
+    y = y - y.mean()
     n, m = x.shape
     assert n == y.size
     if model is None:
@@ -53,9 +66,9 @@ def create_model(name, epochs=200, model=None):
         model = Sequential([
             Dense(64, input_dim=m, activation='linear'),
             Dropout(0.2),
-            Dense(64, activation='relu'),
+            Dense(64, activation='elu'),
             Dropout(0.2),
-            Dense(32, activation='relu'),
+            Dense(32, activation='elu'),
             Dropout(0.2),
             Dense(1, activation='linear')
         ])
@@ -66,8 +79,18 @@ def create_model(name, epochs=200, model=None):
 
 
 def decision_parameter(x, model, verbose=False):
+    """
+    Use the net to make a decision. If no net, make a random choice
+    :param x: list. Input to the net
+    :param model: Neural Net
+    :param verbose: Bool. Print the output of the net for each decision
+    :return: int. best decision in {-1, 0, 1, 2, 3}
+    """
     if model is None:
-        return 0
+        d = rn.randint(-1,3)
+        if verbose:
+            print('~\tUsing random decision: {}'.format(d))
+        return d
 
     fold = -x[1]-x[2]/2.0
     x[0] = 0
@@ -100,8 +123,13 @@ class Recorder:
     def save(self):
         out_x = open(data_folder + 'x_' + self.name + '.pkl', 'wb')
         out_y = open(data_folder + 'y_' + self.name + '.pkl', 'wb')
-        pickle.dump(np.array(self._x), out_x)
-        pickle.dump(np.array(self._y_after) - np.array(self._y_before), out_y)
+        x = np.array(self._x)
+        pot = x[:, 1] + x[:, 2]/2.0
+        pot[pot == 0] = 1
+        y = np.divide((np.array(self._y_after) - np.array(self._y_before)), pot)
+        # y = y - y.mean()
+        pickle.dump(x, out_x)
+        pickle.dump(y, out_y)
 
     def add_to_list(self):
         for x, y_before in zip(self.x, self.y_before):

@@ -5,13 +5,16 @@ import random as rn
 STARTING_AMOUNT = 500
 SB = 1.0
 BB = 2.0
+
 WATCH_AI = False
+RANDOMNESS = 0.5
+preflop_model, flop_model, turn_model, river_model = load_all_models()
 
 
 class Player:
     number_of_players = 0
 
-    def __init__(self, recorders=None, human=False):
+    def __init__(self, recorder=None, human=False):
         self._chips = STARTING_AMOUNT
         self.human = human
         self.game = None
@@ -19,7 +22,7 @@ class Player:
         self._pushed = 0
         self.folded = False
         self.id = Player.number_of_players
-        self.recorders = recorders
+        self.recorder = recorder
         Player.number_of_players += 1
 
     def chips(self):
@@ -182,7 +185,7 @@ class Player:
                           high_card,
                           low_card,
                           ] + board_values)
-        else:
+        else:  # Preflop
             board_values = []
             amount_of_one_suit = max([len(hand.get_values(suit)) for suit in Card.suits])
             x = np.array([0,  # decision parameter
@@ -206,41 +209,24 @@ class Player:
             print '~\t{}'.format(x)
             print "~\tHand: {}".format(self.hand.get_strings())
 
-        use_random = rn.random() < 0.3
+        recorder = None   # gets overwritten
         if len(board_values) == 0:  # PREFLOP
             x[0] = decision_parameter(x, preflop_model, verbose=WATCH_AI)
-            if self.recorders is not None:
-                recorder = self.recorders[0]
-                if use_random:
-                    x[0] = rn.randint(-1, 3)
-                recorder.x.append(x)
-                recorder.y_before.append(self.chips())
         elif len(board_values) == 3:  # FLOP
             x[0] = decision_parameter(x, flop_model, verbose=WATCH_AI)
-            if self.recorders is not None:
-                recorder = self.recorders[1]
-                if use_random:
-                    x[0] = rn.randint(-1, 3)
-                recorder.x.append(x)
-                recorder.y_before.append(self.chips())
         elif len(board_values) == 4:  # TURN
             x[0] = decision_parameter(x, turn_model, verbose=WATCH_AI)
-            if self.recorders is not None:
-                recorder = self.recorders[2]
-                if use_random:
-                    x[0] = rn.randint(-1, 3)
-                recorder.x.append(x)
-                recorder.y_before.append(self.chips())
         else:  # RIVER
             x[0] = decision_parameter(x, river_model, verbose=WATCH_AI)
-            if self.recorders is not None:
-                recorder = self.recorders[3]
-                if use_random:
-                    x[0] = rn.randint(-1, 3)
-                recorder.x.append(x)
-                recorder.y_before.append(self.chips())
         if call_up_to == pushed and x[0] == -1:
-            return 0  # Don't fold when you can just call
+            x[0] = 0  # Don't fold when you can just call
+        if self.recorder is not None:
+            if rn.random() < RANDOMNESS:
+                x[0] = rn.randint(-1, 3)
+                if WATCH_AI:
+                    print('~\tOverriding w/ random decision: {}'.format(x[0]))
+            self.recorder.x.append(x)
+            self.recorder.y_before.append(self.chips())
         return x[0]
 
 
@@ -268,12 +254,15 @@ class Game:
         for p in self.players:
             p.collect(p.pushed() - min_pushed)
 
-    def betting_round(self):
+    def betting_round(self, stop_after):
         """
         Allow players to .act() until they have pushed the same amount of chips into the pot.
         :return: None
         Calls self.collect_chips() and possibly modifies self.winner
         """
+        if self.board is not None and self.board.size() > stop_after:
+            return
+
         j = 0
         while True:
             if self.players[0].pushed() == self.players[1].pushed() and j >= len(self.players):
@@ -296,24 +285,17 @@ class Game:
         self.collect_chips()
 
 
-def start_games(n, save_data=False, human=False):
-    """
-    :param n: Number of games to be played
-    :param save_data: Bool. Save and overwrite data/data_name.pkl with data from these games
-    :param human: Bool. Play as a human against the computer
-    """
-    r_preflop = Recorder(PREFLOP_NAME)
-    r_flop = Recorder(FLOP_NAME)
-    r_turn = Recorder(TURN_NAME)
-    r_river = Recorder(RIVER_NAME)
-    if not human:
-        player_1 = Player(recorders=[r_preflop, r_flop, r_turn, r_river])
+def start_games(n, stop_after=5, save_data_name=False, human=False):
+
+    if not human and save_data_name:
+        player_1 = Player(recorder=Recorder(save_data_name))
     else:
+        stop_after = 5
         player_1 = Player()
     player_2 = Player(human=human)
 
     for j in range(n):
-        if player_2.human or j % 100 == 99:
+        if human or j % 100 == 99:
             print "Game {}/{}".format(j+1, n)
 
         if player_1.chips() == 0 or player_2.chips() == 0:
@@ -330,25 +312,25 @@ def start_games(n, save_data=False, human=False):
         this_game.players[sb_index].bet(SB)
         this_game.players[bb_index].bet(BB)
 
-        this_game.betting_round()
+        this_game.betting_round(stop_after)
 
         if this_game.winner is None:
             flop = Hand(this_game.deck.draw(3))
             this_game.board = flop
 
-            this_game.betting_round()
+            this_game.betting_round(stop_after)
 
             if this_game.winner is None:
                 turn = Hand(this_game.deck.draw(1))
                 this_game.board = this_game.board.plus(turn)
 
-                this_game.betting_round()
+                this_game.betting_round(stop_after)
 
                 if this_game.winner is None:
                     river = Hand(this_game.deck.draw(1))
                     this_game.board = this_game.board.plus(river)
 
-                    this_game.betting_round()
+                    this_game.betting_round(stop_after)
 
                     if this_game.winner is None:
                         result = player_1.get_hand().showdown(player_2.get_hand())
@@ -370,28 +352,39 @@ def start_games(n, save_data=False, human=False):
             print "Your chips: ${}".format(player_2.chips())
             print "Computer's chips: ${}\n".format(player_1.chips())
 
-        if player_1.recorders is not None:
-            for r in player_1.recorders:
-                r.y_after = player_1.chips()
-                r.add_to_list()
+        if player_1.recorder is not None:
+            player_1.recorder.y_after = player_1.chips()
+            player_1.recorder.add_to_list()
 
     # Done playing all the games
-    if save_data and player_1. recorders is not None:
-        for r in player_1.recorders:
-            r.save()
+    if save_data_name and player_1. recorder is not None:
+        player_1.recorder.save()
+
+
+def create_data(name, n=5000):
+    if name == PREFLOP_NAME:
+        model = preflop_model
+        stop_after = 0
+    elif name == FLOP_NAME:
+        model = flop_model
+        stop_after = 3
+    elif name == TURN_NAME:
+        model = turn_model
+        stop_after = 4
+    elif name == RIVER_NAME:
+        model = river_model
+        stop_after = 5
+    else:
+        model = None
+        stop_after = 5
+    start_games(n, stop_after, save_data_name=name)
 
 
 if __name__ == '__main__':
-    preflop_model, flop_model, turn_model, river_model = load_all_models()
-
-    # --- TRAIN ---
-    for i in range(5):
-        create_model(RIVER_NAME, epochs=500, model=river_model)
-        create_model(TURN_NAME, epochs=500, model=turn_model)
-        create_model(FLOP_NAME, epochs=500, model=flop_model)
-        create_model(PREFLOP_NAME, epochs=500, model=preflop_model)
-        start_games(8000, save_data=True)
-        preflop_model, flop_model, turn_model, river_model = load_all_models()
-
     WATCH_AI = True
+    RANDOMNESS = 0.5
+
+    # create_data(PREFLOP_NAME)
+    # train_model(PREFLOP_NAME)
+
     start_games(10, human=True)
