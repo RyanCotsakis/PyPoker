@@ -1,5 +1,3 @@
-from keras.models import Sequential, load_model
-from keras.layers import Dense, Dropout
 import pickle
 import numpy as np
 import random as rn
@@ -13,72 +11,120 @@ model_folder = './models/ordered_'
 data_folder = './data/ordered_'
 
 
+class Model():
+
+    def __init__(self, name):
+        file = open(model_folder + name + '.pkl', 'rb')
+
+        all_models = pickle.load(file)
+        self.call_model = all_models[:,0]
+        self.raise_1_model = all_models[:,1]
+        self.raise_2_model = all_models[:,2]
+
+    def call(self, x):
+        return np.dot(self.call_model, x)
+
+    def raise_1(self, x):
+        return np.dot(self.raise_1_model, x)
+
+    def raise_2(self, x):
+        return np.dot(self.raise_2_model, x)
+
+    def num_of_params(self):
+        return len(self.call_model)
+
+
 def load_all_models():
     try:
-        preflop_model = load_model(model_folder + PREFLOP_NAME + '.h5')
+        preflop_model = Model(PREFLOP_NAME)
     except IOError:
         preflop_model = None
     try:
-        flop_model = load_model(model_folder + FLOP_NAME + '.h5')
+        flop_model = Model(FLOP_NAME)
     except IOError:
         flop_model = None
     try:
-        turn_model = load_model(model_folder + TURN_NAME + '.h5')
+        turn_model = Model(TURN_NAME)
     except IOError:
         turn_model = None
     try:
-        river_model = load_model(model_folder + RIVER_NAME + '.h5')
+        river_model = Model(RIVER_NAME)
     except IOError:
         river_model = None
     return preflop_model, flop_model, turn_model, river_model
 
+def get_beta(X, Y):
+    A = np.matmul(X.T, X)
+    U, S, VT = np.linalg.svd(A)
 
-def train_model(name, epochs=300):
+    l = np.count_nonzero(S > 1e-2)
+    U = U[:,:l]
+    S = S[:l]
+    S_inv = 1./S
+
+    ret_val = np.matmul(U, np.diag(S_inv))
+    ret_val = np.matmul(ret_val, U.T)
+    ret_val = np.matmul(ret_val, X.T)
+    ret_val = np.matmul(ret_val, Y)
+    return ret_val.reshape((len(ret_val),1))
+
+
+
+
+
+def train_model(name, data_name=None):
+    if data_name is None:
+        data_name = name
     print "Training: " + name
+
     pf_model, f_model, t_model, r_model = load_all_models()
     if name == PREFLOP_NAME:
-        model = pf_model
+        length_of_data = 12#pf_model.num_of_params()
     elif name == FLOP_NAME:
-        model = f_model
+        length_of_data = 31#f_model.num_of_params()
     elif name == TURN_NAME:
-        model = t_model
+        length_of_data = 32#t_model.num_of_params()
     elif name == RIVER_NAME:
-        model = r_model
-    else:
-        model = None
+        length_of_data = 33#r_model.num_of_params()
 
     # Load data
     try:
-        in_x = open(data_folder + 'x_' + name + '.pkl', 'rb')
-        in_y = open(data_folder + 'y_' + name + '.pkl', 'rb')
+        in_x = open(data_folder + 'x_' + data_name + '.pkl', 'rb')
+        in_y = open(data_folder + 'y_' + data_name + '.pkl', 'rb')
     except IOError as e:
         # print 'Using Alternate Data'
         # in_x = open('./data/x_' + name + '.pkl', 'rb')
         # in_y = open('./data/y_' + name + '.pkl', 'rb')
         raise e
-    x, y = pickle.load(in_x), pickle.load(in_y)
+    x_all, y_all = pickle.load(in_x), pickle.load(in_y)
+
+    x = np.array([xi for xi in x_all if len(xi) == length_of_data], dtype='float')
+    y = np.array([yi for xi, yi in zip(x_all,y_all) if len(xi) == length_of_data])
 
     y = y - y.mean()
     n, m = x.shape
     assert n == y.size
-    if model is None:
-        print 'Could not find ' + model_folder + name + '.h5'
-        model = Sequential([
-            Dense(64, input_dim=m, activation='linear'),
-            Dropout(0.2),
-            Dense(64, activation='elu'),
-            Dropout(0.2),
-            Dense(32, activation='elu'),
-            Dropout(0.2),
-            Dense(1, activation='linear')
-        ])
-        model.compile(optimizer='adam', loss='mean_squared_error', metrics=['accuracy'])
-    model.fit(x, y, validation_split=0.15, epochs=epochs, batch_size=128, verbose=2)
-    model.save(model_folder + name + '.h5')
-    return model
+
+    x_call = np.array([xi[1:] for xi in x if xi[0] == 0])
+    y_call = np.array([yi for xi, yi in zip(x,y) if xi[0] == 0])
+
+    x_raise_1 = np.array([xi[1:] for xi in x if xi[0] == 1])
+    y_raise_1 = np.array([yi for xi, yi in zip(x,y) if xi[0] == 1])
+
+    x_raise_2 = np.array([xi[1:] for xi in x if xi[0] == 2])
+    y_raise_2 = np.array([yi for xi, yi in zip(x,y) if xi[0] == 2])
+
+    beta_call = get_beta(x_call, y_call)
+    beta_raise_1 = get_beta(x_raise_1, y_raise_1)
+    beta_raise_2 = get_beta(x_raise_2, y_raise_2)
+
+    betas = np.hstack((beta_call, beta_raise_1, beta_raise_2))
+    print betas
+    file = open(model_folder + name + '.pkl', 'wb')
+    pickle.dump(betas, file)
 
 
-def decision_parameter(x, model, verbose=False):
+def decision_parameter(x_data, model, verbose=False):
     """
     Use the net to make a decision. If no net, make a random choice
     :param x: list. Input to the net
@@ -92,18 +138,17 @@ def decision_parameter(x, model, verbose=False):
             print('~\tUsing random decision: {}'.format(d))
         return d
 
-    fold = -x[1]-x[2]/2.0
-    x[0] = 0
-    call = model.predict(np.array([x]))
-    x[0] = 1
-    raise_1 = model.predict(np.array([x]))
-    x[0] = 2
-    raise_2 = model.predict(np.array([x]))
-    x[0] = 3
-    raise_3 = model.predict(np.array([x]))
+    x = np.copy(x_data)
+    x = x[1:]
+    x = x.reshape((len(x),1))
 
-    params = [-1, 0, 1, 2, 3]
-    actions = [fold, call, raise_1, raise_2, raise_3]
+    fold = 0
+    call = model.call(x)
+    raise_1 = model.raise_1(x)
+    raise_2 = model.raise_2(x)
+
+    params = [-1, 0, 1, 2]
+    actions = [fold, call, raise_1, raise_2]
 
     if verbose:
         print '~\t' + '\t'.join([str(a) for a in actions])
@@ -124,9 +169,10 @@ class Recorder:
         out_x = open(data_folder + 'x_' + self.name + '.pkl', 'wb')
         out_y = open(data_folder + 'y_' + self.name + '.pkl', 'wb')
         x = np.array(self._x)
-        pot = x[:, 1] + x[:, 2]/2.0
+        pot = np.array([xi[2] for xi in x]) + np.array([xi[3] for xi in x])/2.0
         pot[pot == 0] = 1
         y = np.divide((np.array(self._y_after) - np.array(self._y_before)), pot)
+        print "Saving " + str(len(y)) + " decisions."
         # y = y - y.mean()
         pickle.dump(x, out_x)
         pickle.dump(y, out_y)

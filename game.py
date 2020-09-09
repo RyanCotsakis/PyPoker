@@ -10,7 +10,6 @@ WATCH_AI = False
 RANDOMNESS = 0.5
 preflop_model, flop_model, turn_model, river_model = load_all_models()
 
-
 class Player:
     number_of_players = 0
 
@@ -92,11 +91,9 @@ class Player:
             if decision > 0:
                 chance = 0.9 + rn.random()/5
                 total_pot = call_up_to+self.pushed()*2+self.game.pot()
-                bet_size = max(call_up_to-self.pushed(), BB, int(total_pot*chance/4))
+                bet_size = max(call_up_to-self.pushed(), BB, int(total_pot*chance/3.))
                 if decision == 2:
-                    bet_size *= 2
-                if decision == 3:
-                    bet_size *= 4
+                    bet_size *= 3
             else:
                 bet_size = decision
         else:
@@ -148,86 +145,91 @@ class Player:
         pot = self.game.pot()/BB
         dealer = (self.id - self.game.under_the_gun) % 2
         board = self.game.board
+
+
+        decision = None
         if board is not None:
             combined_hand = hand.plus(board)  # Hand object (not for NN)
             amount_of_one_suit = max([len(combined_hand.get_values(suit)) for suit in Card.suits])
             amount_of_one_suit_board = max([len(board.get_values(suit)) for suit in Card.suits])
             board_values = [c.value for c in board.sort().cards]
-            x = np.array([0,  # decision parameter
-                          # Measured in BBs
+
+            bools = [
+                      int(bool(combined_hand.is_oak(2))),
+                      int(bool(combined_hand.is_two_pair())),
+                      int(bool(combined_hand.is_oak(3))),
+                      int(bool(combined_hand.is_straight())),
+                      int(bool(combined_hand.is_flush())),
+                      int(bool(combined_hand.is_full_house())),
+                      int(bool(combined_hand.is_oak(4))),
+                      int(bool(combined_hand.is_straight_flush())),
+                      int(bool(board.is_oak(2))),
+                      int(bool(board.is_two_pair())),
+                      int(bool(board.is_oak(3))),
+                      int(bool(board.is_straight())),
+                      int(bool(board.is_flush())),
+                      int(bool(board.is_full_house())),
+                      int(bool(board.is_oak(4))),
+                      int(bool(board.is_straight_flush()))
+                    ]
+            # bools = bools.reshape((len(bools),1))
+            # bools = np.matmul(bools, bools.T).flatten()
+            # bools = list(bools)
+            x = np.array([decision,
+                          1,  # for the intercept
                           pushed,
                           pot,
                           call_up_to,
                           stack,
                           opponent_stack,
-                          # True or False
                           dealer,
-                          int(bool(combined_hand.is_oak(2))),
-                          int(bool(combined_hand.is_two_pair())),
-                          int(bool(combined_hand.is_oak(3))),
-                          int(bool(combined_hand.is_straight())),
-                          int(bool(combined_hand.is_flush())),
-                          int(bool(combined_hand.is_full_house())),
-                          int(bool(combined_hand.is_oak(4))),
-                          int(bool(combined_hand.is_straight_flush())),
-                          int(bool(board.is_oak(2))),
-                          int(bool(board.is_two_pair())),
-                          int(bool(board.is_oak(3))),
-                          int(bool(board.is_straight())),
-                          int(bool(board.is_flush())),
-                          int(bool(board.is_full_house())),
-                          int(bool(board.is_oak(4))),
-                          int(bool(board.is_straight_flush())),
-                          # Counting Suits
-                          amount_of_one_suit_board,
                           amount_of_one_suit,
-                          # Card Values
                           high_card,
                           low_card,
-                          ] + board_values)
+                          amount_of_one_suit_board,
+                          ] + bools + board_values)
         else:  # Preflop
             board_values = []
             amount_of_one_suit = max([len(hand.get_values(suit)) for suit in Card.suits])
-            x = np.array([0,  # decision parameter
-                          # Measured in BBs
+            x = np.array([decision,
+                          1,
                           pushed,
                           pot,
                           call_up_to,
                           stack,
                           opponent_stack,
-                          # True or False
                           dealer,
-                          int(bool(hand.is_oak(2))),
-                          # Counting Suits
                           amount_of_one_suit,
-                          # Card Values
                           high_card,
-                          low_card
+                          low_card,
+                          int(bool(hand.is_oak(2)))
                           ])
-        x.reshape((1, x.size))
         if WATCH_AI:
             print '~\t{}'.format(x)
             print "~\tHand: {}".format(self.hand.get_strings())
 
-        recorder = None   # gets overwritten
         if len(board_values) == 0:  # PREFLOP
-            x[0] = decision_parameter(x, preflop_model, verbose=WATCH_AI)
+            decision = decision_parameter(x, preflop_model, verbose=WATCH_AI)
         elif len(board_values) == 3:  # FLOP
-            x[0] = decision_parameter(x, flop_model, verbose=WATCH_AI)
+            decision = decision_parameter(x, flop_model, verbose=WATCH_AI)
         elif len(board_values) == 4:  # TURN
-            x[0] = decision_parameter(x, turn_model, verbose=WATCH_AI)
+            decision = decision_parameter(x, turn_model, verbose=WATCH_AI)
         else:  # RIVER
-            x[0] = decision_parameter(x, river_model, verbose=WATCH_AI)
-        if call_up_to == pushed and x[0] == -1:
-            x[0] = 0  # Don't fold when you can just call
+            decision = decision_parameter(x, river_model, verbose=WATCH_AI)
+        if call_up_to == pushed and decision == -1:
+            decision = 0  # Don't fold when you can just call
         if self.recorder is not None:
             if rn.random() < RANDOMNESS:
-                x[0] = rn.randint(-1, 3)
+                decision = rn.randint(-1, 3)
                 if WATCH_AI:
-                    print('~\tOverriding w/ random decision: {}'.format(x[0]))
+                    print('~\tOverriding w/ random decision: {}'.format(decision))
+            if call_up_to == pushed and decision == -1:
+                decision = 0  # Don't fold when you can just call
+
+            x[0] = decision
             self.recorder.x.append(x)
             self.recorder.y_before.append(self.chips())
-        return x[0]
+        return decision
 
 
 class Game:
@@ -285,6 +287,7 @@ class Game:
         self.collect_chips()
 
 
+
 def start_games(n, stop_after=5, save_data_name=False, human=False):
 
     if not human and save_data_name:
@@ -295,7 +298,7 @@ def start_games(n, stop_after=5, save_data_name=False, human=False):
     player_2 = Player(human=human)
 
     for j in range(n):
-        if human or j % 100 == 99:
+        if human or j % 1000 == 999:
             print "Game {}/{}".format(j+1, n)
 
         if player_1.chips() == 0 or player_2.chips() == 0:
@@ -357,34 +360,42 @@ def start_games(n, stop_after=5, save_data_name=False, human=False):
             player_1.recorder.add_to_list()
 
     # Done playing all the games
-    if save_data_name and player_1. recorder is not None:
+    if save_data_name and player_1.recorder is not None:
         player_1.recorder.save()
 
 
-def create_data(name, n=5000):
-    if name == PREFLOP_NAME:
-        model = preflop_model
-        stop_after = 0
-    elif name == FLOP_NAME:
-        model = flop_model
-        stop_after = 3
-    elif name == TURN_NAME:
-        model = turn_model
-        stop_after = 4
-    elif name == RIVER_NAME:
-        model = river_model
-        stop_after = 5
-    else:
-        model = None
-        stop_after = 5
-    start_games(n, stop_after, save_data_name=name)
+# def create_data(name, n=8000):
+#     if name == PREFLOP_NAME:
+#         model = preflop_model
+#         stop_after = 0
+#     elif name == FLOP_NAME:
+#         model = flop_model
+#         stop_after = 3
+#     elif name == TURN_NAME:
+#         model = turn_model
+#         stop_after = 4
+#     elif name == RIVER_NAME:
+#         model = river_model
+#         stop_after = 5
+#     else:
+#         model = None
+#         stop_after = 5
+#     start_games(n, stop_after, save_data_name=name)
 
 
 if __name__ == '__main__':
-    WATCH_AI = True
-    RANDOMNESS = 0.5
+    WATCH_AI = False
+    RANDOMNESS = 0.2
 
-    # create_data(PREFLOP_NAME)
-    # train_model(PREFLOP_NAME)
+    for i in range(1):
+        start_games(1000000, save_data_name="all_games")
 
-    start_games(10, human=True)
+        train_model(PREFLOP_NAME, data_name="all_games")
+        train_model(FLOP_NAME, data_name="all_games")
+        train_model(TURN_NAME, data_name="all_games")
+        train_model(RIVER_NAME, data_name="all_games")
+
+        preflop_model, flop_model, turn_model, river_model = load_all_models()
+
+    # WATCH_AI = True
+    # start_games(5, human=True)
